@@ -14,6 +14,9 @@
 #include "togl/rendermechanism.h"
 #include "tier0/fasttimer.h"
 
+#ifdef TOGLES
+#include <dlfcn.h>
+#endif
 
 // NOTE: This has to be the last file included! (turned off below, since this is included like a header)
 #include "tier0/memdbgon.h"
@@ -42,6 +45,10 @@ ConVar sdl_double_click_time( "sdl_double_click_time", "400" );
 
 #if defined( DX_TO_GL_ABSTRACTION )
 COpenGLEntryPoints *gGL = NULL;
+#endif
+
+#ifdef TOGLES
+static void *s_glesLibrary = NULL;
 #endif
 
 #if defined( WIN32 ) && defined( DX_TO_GL_ABSTRACTION )
@@ -118,16 +125,28 @@ void	CheckGLError( int line )
 //-----------------------------------------------------------------------------
 #if !defined( DEDICATED )
 
+#ifdef TOGLES
+void *VoidFnPtrLookup_GlMgr( const char *fn, bool &okay, const bool bRequired, void *fallback)
+#else
 void *VoidFnPtrLookup_GlMgr( const char *libname, const char *fn, bool &okay, const bool bRequired, void *fallback)
+#endif
 {
 	void *retval = NULL;
+#ifndef TOGLES
 	if ((!okay) && (!bRequired))  // always look up if required (so we get a complete list of crucial missing symbols).
 		return NULL;
+#endif
 
 	// The SDL path would work on all these platforms, if we were using SDL there, too...
 #if defined( USE_SDL )
 	// SDL does the right thing, so we never need to use tier0 in this case.
 	retval = SDL_GL_GetProcAddress(fn);
+	#ifdef TOGLES
+	if ( !retval && s_glesLibrary )
+	{
+		retval = dlsym( s_glesLibrary, fn );
+	}
+	#endif
 	//printf("CDynamicFunctionOpenGL: SDL_GL_GetProcAddress(\"%s\") returned %p\n", fn, retval);
 	if ((retval == NULL) && (fallback != NULL))
 	{
@@ -143,7 +162,11 @@ void *VoidFnPtrLookup_GlMgr( const char *libname, const char *fn, bool &okay, co
 	// Note that a non-NULL response doesn't mean it's safe to call the function!
 	//  You always have to check that the extension is supported;
 	//  an implementation MAY return NULL in this case, but it doesn't have to (and doesn't, with the DRI drivers).
+#ifdef TOGLES
+	okay = retval != NULL;
+#else
 	okay = (okay && (retval != NULL));
+#endif
 	if (bRequired && !okay)
 	{
 		// We can't continue execution, because one or more GL function pointers will be NULL.
@@ -458,6 +481,9 @@ InitReturnVal_t CSDLMgr::Init()
 	SDL_SetHint( "SDL_VIDEO_X11_XRANDR", "0" );
 	// Default to no XVidMode.
 	SDL_SetHint( "SDL_VIDEO_X11_XVIDMODE", "0" );
+	#ifdef TOGLES
+	SDL_SetHint( "SDL_VIDEO_X11_FORCE_EGL", "1" );
+	#endif
 
 	if (!m_bTextMode && !SDL_WasInit(SDL_INIT_VIDEO))
 	{
@@ -470,7 +496,19 @@ InitReturnVal_t CSDLMgr::Init()
 			SDL_GL_SetAttribute( SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG );
 		}
 
-		if (SDL_GL_LoadLibrary(NULL) == -1)
+		#ifdef TOGLES
+		SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES );
+		SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 3 );
+		SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 0 );
+		#endif
+
+		if (SDL_GL_LoadLibrary(
+#ifdef TOGLES
+			"libGLESv2.so"
+#else
+			NULL
+#endif
+		) == -1)
 			Error( "SDL_GL_LoadLibrary(NULL) failed: %s", SDL_GetError() );
 #endif
 	}
@@ -545,6 +583,13 @@ InitReturnVal_t CSDLMgr::Init()
 	*(attCursor++) = (int) (key); \
 	*(attCursor++) = (int) (value);
 
+#ifdef TOGLES
+	s_glesLibrary = dlopen( "libGLESv2.so", RTLD_LAZY );
+	SET_GL_ATTR(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+	SET_GL_ATTR(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SET_GL_ATTR(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#endif
+
 	SET_GL_ATTR(SDL_GL_RED_SIZE, 8);
 	SET_GL_ATTR(SDL_GL_GREEN_SIZE, 8);
 	SET_GL_ATTR(SDL_GL_BLUE_SIZE, 8);
@@ -613,7 +658,11 @@ void CSDLMgr::Shutdown()
 #endif
 
 	if (gGL && m_readFBO)
+#ifdef TOGLES
+		gGL->glDeleteFramebuffers(1, &m_readFBO);
+#else
 		gGL->glDeleteFramebuffersEXT(1, &m_readFBO);
+#endif
 	m_readFBO = 0;
 
 	DestroyGameWindow();
@@ -761,8 +810,13 @@ bool CSDLMgr::CreateHiddenGameWindow( const char *pTitle, bool bWindowed, int wi
 	// !!! FIXME: note for later...we never delete this context anywhere, I think.
 	// !!! FIXME:  when we do get around to that, don't forget to delete/NULL gGL!
 
+#ifdef TOGLES
+    static CDynamicFunctionOpenGL< true, const GLubyte *( APIENTRY *)(GLenum name), const GLubyte * > glGetString( "glGetString");
+    static CDynamicFunctionOpenGL< true, GLvoid ( APIENTRY *)(GLenum pname, GLint *params), GLvoid > glGetIntegerv( "glGetIntegerv");
+#else
     static CDynamicFunctionOpenGL< true, const GLubyte *( APIENTRY *)(GLenum name), const GLubyte * > glGetString( NULL, "glGetString");
     static CDynamicFunctionOpenGL< true, GLvoid ( APIENTRY *)(GLenum pname, GLint *params), GLvoid > glGetIntegerv( NULL, "glGetIntegerv");
+#endif
 
 	const char *pszString = ( const char * )glGetString(GL_VENDOR);
 	pszString = ( const char * )glGetString(GL_RENDERER);
@@ -773,15 +827,19 @@ bool CSDLMgr::CreateHiddenGameWindow( const char *pTitle, bool bWindowed, int wi
 	glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &whichProfile);
 
 	// This comes up if SDL gets confused--this is just an early warning for what will be a hard failure later.
+#ifndef TOGLES
 	if ((whichProfile & GL_CONTEXT_COMPATIBILITY_PROFILE_BIT) == 0)
 	{
 		Warning( "SDL failed to create GL compatibility profile (whichProfile=%x!\n", whichProfile );
 	}
+#endif
 
 	// If we specified -gl_debug, make sure the extension string is present now.
 	if ( CommandLine()->FindParm( "-gl_debug" ) )
 	{
+#ifndef TOGLES
 		Assert( V_strstr(pszString, "GL_ARB_debug_output") );
+#endif
 	}
 
 	gGL = GetOpenGLEntryPoints(VoidFnPtrLookup_GlMgr);
@@ -805,7 +863,11 @@ bool CSDLMgr::CreateHiddenGameWindow( const char *pTitle, bool bWindowed, int wi
 		DebugPrintf("\n");
 	}
 
+#ifdef TOGLES
+	gGL->glGenFramebuffers(1, &m_readFBO);
+#else
 	gGL->glGenFramebuffersEXT(1, &m_readFBO);
+#endif
 
 	gGL->glViewport(0, 0, width, height);    /* Reset The Current Viewport And Perspective Transformation */
 	gGL->glScissor(0, 0, width, height);    /* Reset The Current Viewport And Perspective Transformation */
@@ -1151,14 +1213,26 @@ void CSDLMgr::ShowPixels( CShowPixelsParams *params )
 			// bind a quickie FBO to enclose the source texture
 			GLint	myreadfb = 1000;
 			
+			#ifdef TOGLES
+			glBindFramebuffer( GL_READ_FRAMEBUFFER, myreadfb);
+			#else
 			glBindFramebufferEXT( GL_READ_FRAMEBUFFER_EXT, myreadfb);
+			#endif
 			CheckGLError( __LINE__ );
 			
+			#ifdef TOGLES
+			glBindFramebuffer( GL_DRAW_FRAMEBUFFER, 0);
+			#else
 			glBindFramebufferEXT( GL_DRAW_FRAMEBUFFER_EXT, 0);		// to the default FB/backbuffer
+			#endif
 			CheckGLError( __LINE__ );
 			
 			// attach source tex to source FB
+			#ifdef TOGLES
+			glFramebufferTexture2D( GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, params->m_srcTexName, 0);
+			#else
 			glFramebufferTexture2DEXT( GL_READ_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, params->m_srcTexName, 0);
+			#endif
 			CheckGLError( __LINE__ );
 			
 			// blit
@@ -1193,20 +1267,36 @@ void CSDLMgr::ShowPixels( CShowPixelsParams *params )
 			// go NEAREST if sizes match
 			GLenum filter = ( ((srcxmax-srcxmin)==(dstxmax-dstxmin)) && ((srcymax-srcymin)==(dstymax-dstymin)) ) ? GL_NEAREST : GL_LINEAR;
 			
+			#ifdef TOGLES
+			glBlitFramebuffer(
+			#else
 			glBlitFramebufferEXT(
+			#endif
 					     /* src min and maxes xy xy */ srcxmin, srcymin,				srcxmax,srcymax,
 					     /* dst min and maxes xy xy */ dstxmin, dstymax,				dstxmax,dstymin,		// note yflip here
 					     GL_COLOR_BUFFER_BIT, filter );
 			CheckGLError( __LINE__ );
 			
 			// detach source tex
+			#ifdef TOGLES
+			glFramebufferTexture2D( GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+			#else
 			glFramebufferTexture2DEXT( GL_READ_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, 0, 0);
+			#endif
 			CheckGLError( __LINE__ );
 			
+			#ifdef TOGLES
+			glBindFramebuffer( GL_READ_FRAMEBUFFER, 0);
+			#else
 			glBindFramebufferEXT( GL_READ_FRAMEBUFFER_EXT, 0);
+			#endif
 			CheckGLError( __LINE__ );
 			
+			#ifdef TOGLES
+			glBindFramebuffer( GL_DRAW_FRAMEBUFFER, 0);
+			#else
 			glBindFramebufferEXT( GL_DRAW_FRAMEBUFFER_EXT, 0);		// to the default FB/backbuffer
+			#endif
 			CheckGLError( __LINE__ );
 			
 		}
@@ -2130,4 +2220,3 @@ GLMDisplayDB *CSDLMgr::GetDisplayDB( void )
 
 // Turn off memdbg macros (turned on up top) since this is included like a header
 #include "tier0/memdbgoff.h"
-

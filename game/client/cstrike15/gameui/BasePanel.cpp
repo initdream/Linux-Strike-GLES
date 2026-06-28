@@ -5,6 +5,7 @@
 // $NoKeywords: $
 //===========================================================================//
 
+#include "cbase.h"
 #include "uigamedata.h"
 
 #if defined( _WIN32 ) && !defined( _GAMECONSOLE )
@@ -103,7 +104,6 @@ using namespace vgui;
 
 #include "VGuiMatSurface/IMatSystemSurface.h"
 
-#include "cbase.h"
 #include "cs_shareddefs.h"
 
 #include "checksum_sha1.h"
@@ -5937,4 +5937,3 @@ bool CBaseModPanel::LoadingProgressWantsIsolatedRender( bool bContextValid )
     #endif
 	return false;
 }
-

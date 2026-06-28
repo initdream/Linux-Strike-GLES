@@ -1,6 +1,8 @@
 #include "rocketrender.h"
 
-#if defined RMLUI_PLATFORM_WIN32
+#if defined( TOGLES )
+#include <GLES3/gl3.h>
+#elif defined RMLUI_PLATFORM_WIN32
 #include <win32/IncludeWindows.h>
 #include <gl/Gl.h>
 #include <gl/Glu.h>
@@ -22,10 +24,313 @@
 #endif
 
 #include <RmlUi/Core.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
 
 RocketRender RocketRender::m_Instance;
 
-RocketRender::RocketRender() { }
+RocketRender::RocketRender()
+    : m_glContext( nullptr ),
+      m_width( 0 ),
+      m_height( 0 ),
+      m_transformEnabled( false )
+#if defined( TOGLES )
+      , m_program( 0 ),
+      m_uniformViewport( -1 ),
+      m_uniformTranslation( -1 ),
+      m_uniformTexture( -1 ),
+      m_uniformUseTexture( -1 ),
+      m_programReady( false )
+#endif
+{
+}
+
+#if defined( TOGLES )
+
+static bool CompileRocketShader( GLuint shader, const char *source )
+{
+    glShaderSource( shader, 1, &source, NULL );
+    glCompileShader( shader );
+
+    GLint status = 0;
+    glGetShaderiv( shader, GL_COMPILE_STATUS, &status );
+    if ( status )
+        return true;
+
+    GLchar log[1024];
+    GLsizei length = 0;
+    glGetShaderInfoLog( shader, sizeof( log ), &length, log );
+    fprintf( stderr, "RocketUI GLES shader compile failed: %s\n", log );
+    return false;
+}
+
+bool RocketRender::InitGLESProgram()
+{
+    if ( m_programReady )
+        return true;
+
+    static const char *vertexShader =
+        "#version 300 es\n"
+        "precision highp float;\n"
+        "in vec2 inPosition;\n"
+        "in vec4 inColor;\n"
+        "in vec2 inTexCoord;\n"
+        "uniform vec4 uViewport;\n"
+        "uniform vec4 uTranslation;\n"
+        "out vec4 vColor;\n"
+        "out vec2 vTexCoord;\n"
+        "void main()\n"
+        "{\n"
+        "    vec2 p = inPosition + uTranslation.xy;\n"
+        "    vec2 ndc = vec2((p.x / uViewport.x) * 2.0 - 1.0, (p.y / uViewport.y) * 2.0 - 1.0);\n"
+        "    gl_Position = vec4(ndc, 0.0, 1.0);\n"
+        "    vColor = inColor;\n"
+        "    vTexCoord = inTexCoord;\n"
+        "}\n";
+
+    static const char *fragmentShader =
+        "#version 300 es\n"
+        "precision highp float;\n"
+        "in vec4 vColor;\n"
+        "in vec2 vTexCoord;\n"
+        "uniform sampler2D uTexture;\n"
+        "uniform bool uUseTexture;\n"
+        "out vec4 fragColor;\n"
+        "void main()\n"
+        "{\n"
+        "    vec4 texColor = uUseTexture ? texture(uTexture, vTexCoord) : vec4(1.0);\n"
+        "    fragColor = texColor * vColor;\n"
+        "}\n";
+
+    GLuint vs = glCreateShader( GL_VERTEX_SHADER );
+    GLuint fs = glCreateShader( GL_FRAGMENT_SHADER );
+    if ( !vs || !fs || !CompileRocketShader( vs, vertexShader ) || !CompileRocketShader( fs, fragmentShader ) )
+    {
+        if ( vs ) glDeleteShader( vs );
+        if ( fs ) glDeleteShader( fs );
+        return false;
+    }
+
+    m_program = glCreateProgram();
+    glAttachShader( m_program, vs );
+    glAttachShader( m_program, fs );
+    glBindAttribLocation( m_program, 0, "inPosition" );
+    glBindAttribLocation( m_program, 1, "inColor" );
+    glBindAttribLocation( m_program, 2, "inTexCoord" );
+    glLinkProgram( m_program );
+
+    glDeleteShader( vs );
+    glDeleteShader( fs );
+
+    GLint linked = 0;
+    glGetProgramiv( m_program, GL_LINK_STATUS, &linked );
+    if ( !linked )
+    {
+        GLchar log[1024];
+        GLsizei length = 0;
+        glGetProgramInfoLog( m_program, sizeof( log ), &length, log );
+        fprintf( stderr, "RocketUI GLES program link failed: %s\n", log );
+        glDeleteProgram( m_program );
+        m_program = 0;
+        return false;
+    }
+
+    m_uniformViewport = glGetUniformLocation( m_program, "uViewport" );
+    m_uniformTranslation = glGetUniformLocation( m_program, "uTranslation" );
+    m_uniformTexture = glGetUniformLocation( m_program, "uTexture" );
+    m_uniformUseTexture = glGetUniformLocation( m_program, "uUseTexture" );
+
+    glUseProgram( m_program );
+    glUniform1i( m_uniformTexture, 0 );
+    glUseProgram( 0 );
+
+    m_programReady = true;
+    return true;
+}
+
+void RocketRender::PrepareGLState()
+{
+    if ( !InitGLESProgram() )
+        return;
+
+    glActiveTexture( GL_TEXTURE0 );
+    glBindBuffer( GL_ARRAY_BUFFER, 0 );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
+    glDisable( GL_CULL_FACE );
+    glDisable( GL_DEPTH_TEST );
+    glDisable( GL_STENCIL_TEST );
+    glEnable( GL_BLEND );
+    glBlendColor( 1, 1, 1, 1 );
+    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+    glBlendEquation( GL_FUNC_ADD );
+    glDepthMask( GL_FALSE );
+    glColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
+    glViewport( 0, 0, m_width, m_height );
+    glUseProgram( m_program );
+
+    const GLfloat viewport[4] = { (GLfloat)m_width, (GLfloat)m_height, 0.0f, 0.0f };
+    glUniform4fv( m_uniformViewport, 1, viewport );
+}
+
+void RocketRender::RenderGeometry( Rml::Vertex *vertices, int num_vertices, int *indices, int num_indices,
+                                   Rml::TextureHandle texture, const Rml::Vector2f &translation )
+{
+    if ( !vertices || !indices || num_vertices <= 0 || num_indices <= 0 || !InitGLESProgram() )
+        return;
+
+    glUseProgram( m_program );
+    const GLfloat translationUniform[4] = { translation.x, translation.y, 0.0f, 0.0f };
+    glUniform4fv( m_uniformTranslation, 1, translationUniform );
+    glUniform1i( m_uniformUseTexture, texture ? 1 : 0 );
+
+    glActiveTexture( GL_TEXTURE0 );
+    glBindTexture( GL_TEXTURE_2D, (GLuint)texture );
+
+    glEnableVertexAttribArray( 0 );
+    glEnableVertexAttribArray( 1 );
+    glEnableVertexAttribArray( 2 );
+    glVertexAttribPointer( 0, 2, GL_FLOAT, GL_FALSE, sizeof( Rml::Vertex ), &vertices[0].position );
+    glVertexAttribPointer( 1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof( Rml::Vertex ), &vertices[0].colour );
+    glVertexAttribPointer( 2, 2, GL_FLOAT, GL_FALSE, sizeof( Rml::Vertex ), &vertices[0].tex_coord );
+
+    glDrawRangeElements( GL_TRIANGLES, 0, (GLuint)( num_vertices - 1 ), num_indices, GL_UNSIGNED_INT, indices );
+
+    glDisableVertexAttribArray( 0 );
+    glDisableVertexAttribArray( 1 );
+    glDisableVertexAttribArray( 2 );
+}
+
+Rml::CompiledGeometryHandle RocketRender::CompileGeometry(Rml::Vertex *vertices, int num_vertices, int *indices, int num_indices, Rml::TextureHandle texture)
+{
+    return 0;
+}
+
+void RocketRender::EnableScissorRegion(bool enable)
+{
+    if ( enable )
+        glEnable( GL_SCISSOR_TEST );
+    else
+        glDisable( GL_SCISSOR_TEST );
+}
+
+void RocketRender::SetScissorRegion(int x, int y, int width, int height)
+{
+    glScissor( x, y, width, height );
+}
+
+#pragma pack(1)
+struct TGAHeader
+{
+    char  idLength;
+    char  colourMapType;
+    char  dataType;
+    short int colourMapOrigin;
+    short int colourMapLength;
+    char  colourMapDepth;
+    short int xOrigin;
+    short int yOrigin;
+    short int width;
+    short int height;
+    char  bitsPerPixel;
+    char  imageDescriptor;
+};
+#pragma pack()
+
+bool RocketRender::LoadTexture(Rml::TextureHandle &texture_handle, Rml::Vector2i &texture_dimensions, const Rml::String &source)
+{
+    Rml::FileInterface* file_interface = Rml::GetFileInterface();
+    Rml::FileHandle file_handle = file_interface->Open(source);
+    if (!file_handle)
+        return false;
+
+    file_interface->Seek(file_handle, 0, SEEK_END);
+    size_t buffer_size = file_interface->Tell(file_handle);
+    file_interface->Seek(file_handle, 0, SEEK_SET);
+
+    if(buffer_size <= sizeof(TGAHeader))
+    {
+        file_interface->Close(file_handle);
+        return false;
+    }
+
+    char* buffer = new char[buffer_size];
+    file_interface->Read(buffer, buffer_size, file_handle);
+    file_interface->Close(file_handle);
+
+    TGAHeader header;
+    memcpy(&header, buffer, sizeof(TGAHeader));
+
+    int color_mode = header.bitsPerPixel / 8;
+    int image_size = header.width * header.height * 4;
+
+    if (header.dataType != 2 || color_mode < 3)
+    {
+        delete [] buffer;
+        return false;
+    }
+
+    const char* image_src = buffer + sizeof(TGAHeader);
+    unsigned char* image_dest = new unsigned char[image_size];
+
+    for (long y = 0; y < header.height; y++)
+    {
+        long read_index = y * header.width * color_mode;
+        long write_index = ((header.imageDescriptor & 32) != 0) ? read_index : (header.height - y - 1) * header.width * 4;
+        for (long x = 0; x < header.width; x++)
+        {
+            image_dest[write_index] = image_src[read_index+2];
+            image_dest[write_index+1] = image_src[read_index+1];
+            image_dest[write_index+2] = image_src[read_index];
+            image_dest[write_index+3] = (color_mode == 4) ? image_src[read_index+3] : 255;
+
+            write_index += 4;
+            read_index += color_mode;
+        }
+    }
+
+    texture_dimensions.x = header.width;
+    texture_dimensions.y = header.height;
+
+    bool success = GenerateTexture(texture_handle, image_dest, texture_dimensions);
+
+    delete [] image_dest;
+    delete [] buffer;
+
+    return success;
+}
+
+bool RocketRender::GenerateTexture(Rml::TextureHandle &texture_handle, const Rml::byte *source, const Rml::Vector2i &source_dimensions)
+{
+    GLuint texture_id = 0;
+    glGenTextures(1, &texture_id);
+    if (texture_id == 0)
+        return false;
+
+    glBindTexture(GL_TEXTURE_2D, texture_id);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, source_dimensions.x, source_dimensions.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, source);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    texture_handle = (Rml::TextureHandle) texture_id;
+    return true;
+}
+
+void RocketRender::ReleaseTexture(Rml::TextureHandle texture)
+{
+    GLuint texture_id = (GLuint) texture;
+    glDeleteTextures(1, &texture_id);
+}
+
+void RocketRender::SetTransform(const Rml::Matrix4f *transform)
+{
+    // The GLES path currently renders untransformed geometry; normal HUD/menu documents do not rely on this.
+    m_transformEnabled = (bool)transform;
+}
+
+#else
 
 void RocketRender::PrepareGLState()
 {
@@ -331,3 +636,5 @@ void RocketRender::SetTransform(const Rml::Matrix4f *transform)
     else
         glLoadIdentity();
 }
+
+#endif

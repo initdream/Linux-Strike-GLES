@@ -274,7 +274,7 @@ void CCenterPrint::Print( const char *text )
 {
 	// [jason] Forward the message to the Scaleform info panel
 #if defined ( CSTRIKE15 ) && defined( INCLUDE_SCALEFORM )
-	FORWARD_PRIORITY_MSG(text);
+	FORWARD_PRIORITY_MSG(const_cast<char *>( text ));
 	return;
 #endif
 
@@ -288,7 +288,7 @@ void CCenterPrint::Print( const wchar_t *text )
 {
 	// [jason] Forward the message to the Scaleform info panel
 #if defined ( CSTRIKE15 ) && defined( INCLUDE_SCALEFORM )
-	FORWARD_PRIORITY_MSG( text );
+	FORWARD_PRIORITY_MSG( const_cast<wchar_t *>( text ) );
 	return;
 #endif
 
@@ -330,7 +330,7 @@ void CCenterPrint::Clear( void )
 {
 	// [jason] Forward the message to the Scaleform info panel
 #if defined ( CSTRIKE15 ) && defined( INCLUDE_SCALEFORM )
-	FORWARD_PRIORITY_MSG(text);
+	FORWARD_PRIORITY_MSG( "" );
 	return;
 #endif
 

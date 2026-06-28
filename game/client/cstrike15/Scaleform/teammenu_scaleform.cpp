@@ -23,6 +23,7 @@
 #include "matchmaking/imatchframework.h"
 #include "cdll_client_int.h"
 #include "gametypes.h"
+#include "ugc_utils.h"
 #include "HUD/sfhudradar.h"
 #include "vgui/ILocalize.h"
 #include "vguitextwindow.h"

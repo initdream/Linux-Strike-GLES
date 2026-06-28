@@ -10,6 +10,16 @@ private:
     int         m_width;
     int         m_height;
     bool        m_transformEnabled;
+#if defined( TOGLES )
+    unsigned int m_program;
+    int m_uniformViewport;
+    int m_uniformTranslation;
+    int m_uniformTexture;
+    int m_uniformUseTexture;
+    bool m_programReady;
+
+    bool InitGLESProgram();
+#endif
     /** singleton support **/
 public:
     static RocketRender m_Instance;

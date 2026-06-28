@@ -383,7 +383,11 @@ ImageFormat D3DFormatToImageFormat( D3DFORMAT format )
 	{
 #if !defined( PLATFORM_X360 )
 	case D3DFMT_R8G8B8:
+#ifdef TOGLES
+		return IMAGE_FORMAT_RGB888;
+#else
 		return IMAGE_FORMAT_BGR888;
+#endif
 #endif
 #ifndef POSIX
 	case D3DFMT_A8B8G8R8:
@@ -392,7 +396,11 @@ ImageFormat D3DFormatToImageFormat( D3DFORMAT format )
 		return IMAGE_FORMAT_RGBX8888;
 #endif // !POSIX
 	case D3DFMT_A8R8G8B8:
+#ifdef TOGLES
+		return IMAGE_FORMAT_RGBA8888;
+#else
 		return IMAGE_FORMAT_BGRA8888;
+#endif
 	case D3DFMT_X8R8G8B8:
 		return IMAGE_FORMAT_BGRX8888;
 	case D3DFMT_R5G6B5:
@@ -648,4 +656,3 @@ D3DFORMAT ImageFormatToD3DFormat( ImageFormat format )
 #pragma warning (default:4063)
 
 } // ImageLoader namespace ends
-

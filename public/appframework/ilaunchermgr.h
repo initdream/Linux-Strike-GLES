@@ -27,8 +27,13 @@
 #include "inputsystem/iinputsystem.h"
 
 #if defined( DX_TO_GL_ABSTRACTION )
+#ifdef TOGLES
+#include "togles/linuxwin/glmgrbasics.h"
+#include "togles/linuxwin/glmdisplay.h"
+#else
 #include "togl/glmgrbasics.h"
 #include "togl/glmdisplay.h"
+#endif
 #endif
 
 // if you rev this version also update materialsystem/cmaterialsystem.cpp CMaterialSystem::Connect as it defines the string directly
@@ -184,4 +189,3 @@ public:
 #endif // defined( USE_SDL ) || defined( OSX ) || defined( LINUX) 
 
 #endif // ILAUNCHERMGR_H
-

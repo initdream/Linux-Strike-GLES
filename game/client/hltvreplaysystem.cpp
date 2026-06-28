@@ -24,6 +24,7 @@ ConVar spec_replay_autostart_delay( "spec_replay_autostart_delay", "1.5", FCVAR_
 ConVar spec_replay_victim_pov( "spec_replay_victim_pov", "0", FCVAR_CLIENTDLL, "Killer Replay - replay from victim's point of view (1); the default is killer's (0). Experimental." );
 CHltvReplaySystem g_HltvReplaySystem;
 extern void CS_FreezePanel_OnHltvReplayButtonStateChanged();
+#if !defined( INCLUDE_SCALEFORM )
 void CS_FreezePanel_OnHltvReplayButtonStateChanged()
 {
     /*
@@ -33,6 +34,7 @@ void CS_FreezePanel_OnHltvReplayButtonStateChanged()
         pPanel->OnHltvReplayButtonStateChanged();
     }*/
 }
+#endif
 CHltvReplaySystem::CHltvReplaySystem()
 {
 	m_nHltvReplayDelay = 0;

@@ -35,4 +35,7 @@ endif()
 target_link_libraries(${OUTBINNAME} RmlCore RmlDebugger) #thirdparty/RmlUI
 
 #target_link_libraries(${OUTBINNAME} ${SRCDIR}/thirdparty/RmlUi/build/libRmlDebugger.so)
+if( POSIX )
+    target_link_libraries(${OUTBINNAME} GLESv2)
+endif()
 target_link_libraries(${OUTBINNAME} GL tier2_client tier3_client libtogl_client)

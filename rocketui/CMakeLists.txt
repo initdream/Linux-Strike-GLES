@@ -36,6 +36,10 @@ target_link_libraries(${OUTBINNAME} RmlCore RmlDebugger) #thirdparty/RmlUI
 
 #target_link_libraries(${OUTBINNAME} ${SRCDIR}/thirdparty/RmlUi/build/libRmlDebugger.so)
 if( POSIX )
-    target_link_libraries(${OUTBINNAME} GLESv2)
+    #if( USE_OPENGLES )
+        target_link_libraries(${OUTBINNAME} GLESv2 EGL)
+    #else()
+    #    target_link_libraries(${OUTBINNAME} GL)
+    #endif()
 endif()
-target_link_libraries(${OUTBINNAME} GL tier2_client tier3_client libtogl_client)
+target_link_libraries(${OUTBINNAME} tier2_client tier3_client libtogl_client)

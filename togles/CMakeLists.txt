@@ -18,7 +18,7 @@ include(${CMAKE_MODULE_PATH}/source_dll_base.cmake)
 include_directories("../")
 include_directories("../public")
 include_directories("../public/togles")
-include_directories("../public/togl") 
+#include_directories("../public/togl")
 
 if(OSXALL)
     add_definitions(-DTOGL_DLL_EXPORT)

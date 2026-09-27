@@ -424,6 +424,15 @@ COpenGLEntryPoints::COpenGLEntryPoints()
 		if( CommandLine()->FindParm( "-gl_enable_buffer_storage" ) )
 			m_bHave_GL_EXT_buffer_storage = true;
 
+		if( CommandLine()->FindParm( "-gl_forcedxt" ) )
+		{
+			m_bHave_GL_EXT_texture_compression_dxt1 = true;
+			m_bHave_GL_EXT_texture_compression_s3tc = true;
+			m_bHave_GL_ANGLE_texture_compression_dxt3 = true;
+			m_bHave_GL_ANGLE_texture_compression_dxt5 = true;
+			printf( "Forcing DXT/S3TC support on (-gl_forcedxt): the driver does not advertise it.\n" );
+		}
+
 #if 0
 		glBindFramebuffer.Force(glBindFramebuffer.Pointer());
 		glBindRenderbuffer.Force(glBindRenderbuffer.Pointer());

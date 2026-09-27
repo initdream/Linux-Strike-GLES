@@ -1047,6 +1047,14 @@ const CPUInformation& GetCPUInformation()
 		}
 	}
 #endif
+
+#if defined( PLATFORM_ARM )
+	if ( !pi.m_szProcessorID )
+		pi.m_szProcessorID = ( tchar * )"ARM";
+	if ( !pi.m_szProcessorBrand )
+		pi.m_szProcessorBrand = ( tchar * )"ARM";
+#endif
+
 	return pi;
 }
 

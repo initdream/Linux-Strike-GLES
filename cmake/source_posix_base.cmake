@@ -21,7 +21,14 @@ endif(NOT CMAKE_BUILD_TYPE)
 
 #-Werror=return-type - Set these warnings to ERRORS because they can ruin your stack/day
 if(NOT WIN32)
-	set(LINUX_FLAGS_COMMON " -ffast-math -march=native -Wno-invalid-offsetof -Wno-ignored-attributes -Wno-enum-compare -Werror=return-type ")
+	set(LINUX_FLAGS_COMMON " -ffast-math -Wno-invalid-offsetof -Wno-ignored-attributes -Wno-enum-compare -Werror=return-type ")
+	if( CMAKE_CROSSCOMPILING )
+		if( CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|arm" )
+			set(LINUX_FLAGS_COMMON "${LINUX_FLAGS_COMMON} -march=armv8-a ")
+		endif()
+	else()
+		set(LINUX_FLAGS_COMMON "${LINUX_FLAGS_COMMON} -march=native ")
+	endif()
 	set(LINUX_DEBUG_FLAGS " -ggdb -g1") #3 -fno-eliminate-unused-debug-symbols
 endif()
 

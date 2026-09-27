@@ -28,3 +28,5 @@ option(TRACY_STORE_LOGS "Turn off Tracy's On-Demand mode. With this flag the pro
 option(RELEASE_ASSERTS "Enable asserts in release build" OFF)
 
 #CMAKE_BUILD_TYPE is supported: RELEASE, DEBUG -- See source_posix_base.cmake for more compiler flags.
+
+set(STEAM_API_LIB "${CMAKE_SOURCE_DIR}/lib/public/linux64/libsteam_api.so" CACHE FILEPATH "Path to libsteam_api.so (may point outside the source tree)")

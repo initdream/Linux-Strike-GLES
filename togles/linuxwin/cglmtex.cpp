@@ -3491,6 +3491,49 @@ GLvoid *uncompressDXTc(GLsizei width, GLsizei height, GLenum format, GLsizei ima
     return pixels;
 }
 
+ConVar gl_decompress_texture_format( "gl_decompress_texture_format", "1", 0,
+	"0: decompress DXT to RGB8/RGBA8 (best quality, most RAM) 1: decompress to RGB565/RGBA4444 (less RAM)" );
+
+ConVar gl_dxt_debug( "gl_dxt_debug", "0", 0, "Report GL errors from compressed / 16bpp texture uploads (diagnostic)" );
+
+static bool GLMIsDXTDebugEnabled( void )
+{
+	return ( gl_dxt_debug.GetInt() != 0 ) || ( CommandLine()->FindParm( "-gl_dxt_debug" ) != 0 );
+}
+
+static void GLMDrainGLErrors( void )
+{
+	if ( !GLMIsDXTDebugEnabled() )
+		return;
+
+	int nGuard = 0;
+	while ( ( gGL->glGetError() != GL_NO_ERROR ) && ( ++nGuard < 32 ) )
+		;
+}
+
+static void GLMCheckDXTErrors( const char *pszWhat, GLenum internalformat, GLsizei width, GLsizei height )
+{
+	if ( !GLMIsDXTDebugEnabled() )
+		return;
+
+	static int s_nReported = 0;
+	if ( s_nReported >= 25 )
+		return;
+
+	GLenum err;
+	while ( ( err = (GLenum)gGL->glGetError() ) != GL_NO_ERROR )
+	{
+		if ( s_nReported >= 25 )
+			break;
+
+		printf( "[dxt-debug] GL error 0x%04X after %s (internalformat 0x%04X, %dx%d)\n",
+			(unsigned)err, pszWhat, (unsigned)internalformat, (int)width, (int)height );
+
+		if ( ++s_nReported == 25 )
+			printf( "[dxt-debug] further GL errors suppressed\n" );
+	}
+}
+
 void CompressedTexImage2D(GLenum target, GLint level, GLenum internalformat,
                             GLsizei width, GLsizei height, GLint border,
                             GLsizei imageSize, const GLvoid *data) 
@@ -3525,6 +3568,44 @@ void CompressedTexImage2D(GLenum target, GLint level, GLenum internalformat,
 
 		if( srgb )
 			intformat = hasAlpha ? GL_SRGB8_ALPHA8 : GL_SRGB8;
+
+		if( !srgb && gl_decompress_texture_format.GetInt() )
+		{
+			GLenum packedFormat = hasAlpha ? GL_RGBA : GL_RGB;
+			GLenum packedType    = hasAlpha ? GL_UNSIGNED_SHORT_4_4_4_4 : GL_UNSIGNED_SHORT_5_6_5;
+			GLenum packedIntFmt  = hasAlpha ? GL_RGBA4 : GL_RGB565;
+
+			GLvoid *packed = NULL;
+			if( pixels )
+			{
+				const int pixelsize = hasAlpha ? 4 : 3;
+				const size_t rowStride = (size_t)width * (size_t)pixelsize;
+				packed = malloc( (size_t)width * (size_t)height * 2 );
+				const uint8_t *src = (const uint8_t *)pixels;
+				uint16_t *dst = (uint16_t *)packed;
+				for( int y = 0; y < height; y++ )
+				{
+					const uint8_t *row = src + (size_t)y * rowStride;
+					for( int x = 0; x < width; x++ )
+					{
+						if( hasAlpha )
+							dst[x] = (uint16_t)( ( ( row[0] >> 4 ) << 12 ) | ( ( row[1] >> 4 ) << 8 ) | ( ( row[2] >> 4 ) << 4 ) | ( row[3] >> 4 ) );
+						else
+							dst[x] = (uint16_t)( ( ( row[0] >> 3 ) << 11 ) | ( ( row[1] >> 2 ) << 5 ) | ( row[2] >> 3 ) );
+						row += pixelsize;
+					}
+					dst += width;
+				}
+			}
+			GLMDrainGLErrors();
+			gGL->glTexImage2D( target, level, packedIntFmt, width, height, border, packedFormat, packedType, packed );
+			GLMCheckDXTErrors( "glTexImage2D (16bpp DXT fallback)", packedIntFmt, width, height );
+			if( packed )
+				free( packed );
+			if( data != pixels )
+				free( pixels );
+			return;
+		}
 	}
 
 	gGL->glTexImage2D(target, level, intformat, width, height, border, format, type, pixels);
@@ -3695,7 +3776,11 @@ void CGLMTex::WriteTexels( GLMTexLockDesc *desc, bool writeWholeSlice, bool noDa
 				// compressed path
 				// http://www.opengl.org/sdk/docs/man/xhtml/glCompressedTexImage2D.xml
 				if( gGL->m_bHave_GL_EXT_texture_compression_dxt1 )
+				{
+					GLMDrainGLErrors();
 					gGL->glCompressedTexImage2D( target, desc->m_req.m_mip, intformat, slice->m_xSize, slice->m_ySize, 0, slice->m_storageSize, sliceAddress );
+					GLMCheckDXTErrors( "glCompressedTexImage2D", intformat, slice->m_xSize, slice->m_ySize );
+				}
 				else
 					CompressedTexImage2D( target, desc->m_req.m_mip, intformat, slice->m_xSize, slice->m_ySize, 0, slice->m_storageSize, sliceAddress );
 			}

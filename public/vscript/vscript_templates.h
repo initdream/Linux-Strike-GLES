@@ -105,12 +105,7 @@ inline ScriptFunctionBindingStorageType_t ScriptConvertFreeFuncPtrToVoid( FUNCPT
 		FuncPtrConvertMI convert;
 		convert.fn8.iToc = 0;
 		convert.pFunc = pFunc;
-		if ( !convert.fn8.iToc )
-			return convert.fn8.stype;
-		
-		Assert( 0 );
-		DebuggerBreak();
-		return 0;
+		return convert.fn8.stype;
 	}
 #else
 	return ( ScriptFunctionBindingStorageType_t ) pFunc;

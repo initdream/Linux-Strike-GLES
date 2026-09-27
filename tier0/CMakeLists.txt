@@ -16,6 +16,12 @@ set(NOSKELETONBASE "1")
 include(${CMAKE_MODULE_PATH}/detect_platform.cmake)
 include(${CMAKE_MODULE_PATH}/source_dll_base.cmake)
 
+if( LINUXALL AND EXISTS "${STEAM_API_LIB}" )
+    add_custom_target(stage_steam_api ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${STEAM_API_LIB}" "${OUTBINDIR}/libsteam_api.so"
+        COMMENT "Staging libsteam_api.so -> ${OUTBINDIR}/libsteam_api.so")
+endif()
+
 if( WIN32 OR X360 )
     add_definitions(-DTIER0_DLL_EXPORT -DCROSS_PLATFORM_VERSION=1 -DTHREAD_MUTEX_TRACING_ENABLED)
 elseif( POSIX OR PS3 )
